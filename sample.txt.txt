@@ -1,0 +1,39 @@
+import { saveAs } from "file-saver";
+import htmlDocx from "html-docx-js";
+
+const exportDocxFromElement = () => {
+  const element = document.getElementById("scrollable-container");
+  if (!element) return;
+
+  // Clone element so we can modify it safely
+  const clone = element.cloneNode(true) as HTMLElement;
+
+  // Create a full HTML doc with styles + element content
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8" />
+      <style>
+        ${Array.from(document.styleSheets)
+          .map((sheet) => {
+            try {
+              return Array.from(sheet.cssRules || [])
+                .map((rule) => rule.cssText)
+                .join("\n");
+            } catch (e) {
+              return ""; // Skip inaccessible stylesheets (e.g., cross-origin)
+            }
+          })
+          .join("\n")}
+      </style>
+    </head>
+    <body>
+      ${clone.outerHTML}
+    </body>
+    </html>
+  `;
+
+  const converted = htmlDocx.asBlob(html);
+  saveAs(converted, "export.docx");
+};
