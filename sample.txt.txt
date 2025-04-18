@@ -1,56 +1,37 @@
-Retrieve the HTML Element: Use document.getElementById to access the desired HTML element.
+const convertGridsToTables = (root: HTMLElement) => {
+  const potentialTables = root.querySelectorAll('div, section');
 
-tsx
-Copy
-Edit
-const element = document.getElementById('yourElementId');
-if (!element) return;
-Inline All Styles: To ensure that all CSS styles are preserved in the Word document, convert all computed styles to inline styles.
+  potentialTables.forEach(container => {
+    const rows = Array.from(container.children).filter(
+      child => child instanceof HTMLElement && child.children.length > 0
+    );
 
-tsx
-Copy
-Edit
-const inlineAllStyles = (element: HTMLElement): HTMLElement => {
-  const clone = element.cloneNode(true) as HTMLElement;
-  const traverse = (node: HTMLElement) => {
-    const computedStyle = window.getComputedStyle(node);
-    const style: Partial<CSSStyleDeclaration> = {};
-    for (let i = 0; i < computedStyle.length; i++) {
-      const prop = computedStyle[i];
-      style[prop] = computedStyle.getPropertyValue(prop);
-    }
-    Object.assign(node.style, style);
-    Array.from(node.children).forEach((child) => traverse(child as HTMLElement));
-  };
-  traverse(clone);
-  return clone;
+    if (rows.length < 2) return; // Need at least 2 rows to consider it a table
+
+    const colCount = rows[0].children.length;
+    const isUniform = rows.every(row => row.children.length === colCount);
+
+    if (!isUniform || colCount < 2) return;
+
+    // Now we build a semantic table
+    const table = document.createElement('table');
+    table.style.borderCollapse = 'collapse';
+    table.style.width = '100%';
+
+    rows.forEach(row => {
+      const tr = document.createElement('tr');
+      Array.from(row.children).forEach(cell => {
+        const td = document.createElement('td');
+        td.style.border = '1px solid black';
+        td.style.padding = '4px';
+        td.style.textAlign = 'left';
+        td.innerHTML = (cell as HTMLElement).innerHTML;
+        tr.appendChild(td);
+      });
+      table.appendChild(tr);
+    });
+
+    // Replace original div with real table
+    container.replaceWith(table);
+  });
 };
-Construct the Word Document Content: Wrap the inlined HTML content with necessary Word-specific HTML headers and styles.
-
-tsx
-Copy
-Edit
-const header = `
-  <html xmlns:o='urn:schemas-microsoft-com:office:office' 
-        xmlns:w='urn:schemas-microsoft-com:office:word' 
-        xmlns='http://www.w3.org/TR/REC-html40'>
-  <head><meta charset='utf-8'><title>Export HTML to Word</title></head><body>`;
-const footer = '</body></html>';
-const inlinedElement = inlineAllStyles(element);
-const htmlContent = header + inlinedElement.outerHTML + footer;
-Create and Download the Word Document: Convert the HTML content to a Blob and trigger a download.
-
-tsx
-Copy
-Edit
-const blob = new Blob(['\ufeff', htmlContent], {
-  type: 'application/msword',
-});
-const url = URL.createObjectURL(blob);
-const link = document.createElement('a');
-link.href = url;
-link.download = 'document.doc';
-document.body.appendChild(link);
-link.click();
-document.body.removeChild(link);
-URL.revokeObjectURL(url);
