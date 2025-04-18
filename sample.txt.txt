@@ -1,39 +1,56 @@
-import { saveAs } from "file-saver";
-import htmlDocx from "html-docx-js";
+Retrieve the HTML Element: Use document.getElementById to access the desired HTML element.
 
-const exportDocxFromElement = () => {
-  const element = document.getElementById("scrollable-container");
-  if (!element) return;
+tsx
+Copy
+Edit
+const element = document.getElementById('yourElementId');
+if (!element) return;
+Inline All Styles: To ensure that all CSS styles are preserved in the Word document, convert all computed styles to inline styles.
 
-  // Clone element so we can modify it safely
+tsx
+Copy
+Edit
+const inlineAllStyles = (element: HTMLElement): HTMLElement => {
   const clone = element.cloneNode(true) as HTMLElement;
-
-  // Create a full HTML doc with styles + element content
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8" />
-      <style>
-        ${Array.from(document.styleSheets)
-          .map((sheet) => {
-            try {
-              return Array.from(sheet.cssRules || [])
-                .map((rule) => rule.cssText)
-                .join("\n");
-            } catch (e) {
-              return ""; // Skip inaccessible stylesheets (e.g., cross-origin)
-            }
-          })
-          .join("\n")}
-      </style>
-    </head>
-    <body>
-      ${clone.outerHTML}
-    </body>
-    </html>
-  `;
-
-  const converted = htmlDocx.asBlob(html);
-  saveAs(converted, "export.docx");
+  const traverse = (node: HTMLElement) => {
+    const computedStyle = window.getComputedStyle(node);
+    const style: Partial<CSSStyleDeclaration> = {};
+    for (let i = 0; i < computedStyle.length; i++) {
+      const prop = computedStyle[i];
+      style[prop] = computedStyle.getPropertyValue(prop);
+    }
+    Object.assign(node.style, style);
+    Array.from(node.children).forEach((child) => traverse(child as HTMLElement));
+  };
+  traverse(clone);
+  return clone;
 };
+Construct the Word Document Content: Wrap the inlined HTML content with necessary Word-specific HTML headers and styles.
+
+tsx
+Copy
+Edit
+const header = `
+  <html xmlns:o='urn:schemas-microsoft-com:office:office' 
+        xmlns:w='urn:schemas-microsoft-com:office:word' 
+        xmlns='http://www.w3.org/TR/REC-html40'>
+  <head><meta charset='utf-8'><title>Export HTML to Word</title></head><body>`;
+const footer = '</body></html>';
+const inlinedElement = inlineAllStyles(element);
+const htmlContent = header + inlinedElement.outerHTML + footer;
+Create and Download the Word Document: Convert the HTML content to a Blob and trigger a download.
+
+tsx
+Copy
+Edit
+const blob = new Blob(['\ufeff', htmlContent], {
+  type: 'application/msword',
+});
+const url = URL.createObjectURL(blob);
+const link = document.createElement('a');
+link.href = url;
+link.download = 'document.doc';
+document.body.appendChild(link);
+link.click();
+document.body.removeChild(link);
+URL.revokeObjectURL(url);
