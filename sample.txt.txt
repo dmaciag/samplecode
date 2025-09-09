@@ -1,67 +1,25 @@
-npm install file-saver
-🧩 2. Add the CDN script in your index.html (root level)
-html
-Copy
-Edit
-<script src="https://unpkg.com/html-docx-js/dist/html-docx.js"></script>
-Put this inside <head> or just before </body> in index.html.
+import { useEffect } from "react";
+import * as signalR from "@microsoft/signalr";
 
-✅ 3. React + TypeScript export function
-tsx
-Copy
-Edit
-import React from "react";
-import { saveAs } from "file-saver";
+export default function App() {
+  useEffect(() => {
+    const connection = new signalR.HubConnectionBuilder()
+      .withUrl("https://localhost:5001/hubs/chat") // <-- match your C# hub endpoint
+      .withAutomaticReconnect()
+      .build();
 
-// This makes TypeScript happy
-declare const HTMLDocx: any;
+    connection.on("ReceiveMessage", (message: string) => {
+      console.log("Message from hub:", message);
+    });
 
-const ExportAgGridToDocx = () => {
-  const handleExport = () => {
-    const gridContainer = document.querySelector(".ag-root") as HTMLElement;
-    if (!gridContainer || typeof HTMLDocx === "undefined") {
-      alert("AG Grid container not found or DOCX script not loaded");
-      return;
-    }
+    connection.start()
+      .then(() => console.log("Connected to SignalR hub"))
+      .catch(err => console.error("Connection failed:", err));
 
-    const html = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8">
-          <style>
-            body { font-family: Arial; }
-            .ag-root {
-              font-size: 14px;
-              border: 1px solid #ccc;
-            }
-            .ag-cell {
-              padding: 6px;
-              border: 1px solid #ddd;
-            }
-            .ag-header-cell {
-              font-weight: bold;
-              background-color: #eee;
-              border: 1px solid #aaa;
-              padding: 6px;
-            }
-          </style>
-        </head>
-        <body>
-          ${gridContainer.outerHTML}
-        </body>
-      </html>
-    `;
+    return () => {
+      connection.stop();
+    };
+  }, []);
 
-    const blob = HTMLDocx.asBlob(html);
-    saveAs(blob, "ag-grid-export.docx");
-  };
-
-  return (
-    <button onClick={handleExport} style={{ margin: "20px", padding: "10px" }}>
-      Export AG Grid to DOCX
-    </button>
-  );
-};
-
-export default ExportAgGridToDocx;
+  return <div>SignalR Simple Demo</div>;
+}
