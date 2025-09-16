@@ -1,28 +1,66 @@
-import { useEffect } from "react";
-import * as signalR from "@microsoft/signalr";
+// .NET 8 minimal, no external packages
+using System.Net.Http.Headers;
 
-export default function App() {
-  useEffect(() => {
-    const connection = new signalR.HubConnectionBuilder()
-      .withUrl("https://localhost:5001/hubs/chat") // <-- match your C# hub endpoint
-      .withAutomaticReconnect()
-      .build();
+var builder = WebApplication.CreateBuilder(args);
+var app = builder.Build();
 
-    connection.on("ReceiveMessage", (message: string) => {
-      console.log("Message from hub:", message);
-    });
+// Reusable HttpClient handler for performance
+var http = new HttpClient(new SocketsHttpHandler
+{
+    UseProxy = false,
+    AllowAutoRedirect = false,
+    AutomaticDecompression = System.Net.DecompressionMethods.All
+})
+{
+    Timeout = TimeSpan.FromMinutes(2)
+};
 
-    connection.start()
-      .then(() => console.log("Connected to SignalR hub"))
-      .catch(err => console.error("Connection failed:", err));
+// /xyz/** -> http://localhost:8081/xyz/**
+app.Map("/xyz/{**rest}", async context =>
+{
+    var rest = (string?)context.Request.RouteValues["rest"] ?? string.Empty;
+    var targetUri = new Uri($"http://localhost:8081/xyz/{rest}{context.Request.QueryString}");
 
-    return () => {
-      connection.stop();
-    };
-  }, []);
+    // Build outgoing request
+    var request = new HttpRequestMessage(new HttpMethod(context.Request.Method), targetUri);
 
-  return <div>SignalR Simple Demo</div>;
-}
+    // Body (for methods that can have one)
+    if (context.Request.ContentLength is > 0 || context.Request.Headers.ContainsKey("Transfer-Encoding"))
+    {
+        request.Content = new StreamContent(context.Request.Body);
+        if (!string.IsNullOrEmpty(context.Request.ContentType))
+            request.Content.Headers.ContentType = MediaTypeHeaderValue.Parse(context.Request.ContentType);
+    }
 
+    // Copy headers (skip Host & TE which must not be set manually)
+    foreach (var header in context.Request.Headers)
+    {
+        if (header.Key.Equals("Host", StringComparison.OrdinalIgnoreCase) ||
+            header.Key.Equals("Transfer-Encoding", StringComparison.OrdinalIgnoreCase))
+            continue;
 
-ok
+        if (!request.Headers.TryAddWithoutValidation(header.Key, (IEnumerable<string>)header.Value))
+            request.Content?.Headers.TryAddWithoutValidation(header.Key, (IEnumerable<string>)header.Value);
+    }
+
+    // Send and relay response
+    using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, context.RequestAborted);
+
+    context.Response.StatusCode = (int)response.StatusCode;
+
+    foreach (var h in response.Headers)
+        context.Response.Headers[h.Key] = h.Value.ToArray();
+
+    foreach (var h in response.Content.Headers)
+        context.Response.Headers[h.Key] = h.Value.ToArray();
+
+    // Kestrel manages this
+    context.Response.Headers.Remove("transfer-encoding");
+
+    await response.Content.CopyToAsync(context.Response.Body, context.RequestAborted);
+});
+
+// Everything else (your SPA/static files)
+app.MapFallbackToFile("index.html");
+
+app.Run();
